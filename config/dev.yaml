@@ -1,0 +1,46 @@
+environment: development
+aws:
+  region: us-east-1
+
+kinesis:
+  stream_name: ecommerce-transaction-stream
+  shard_count: 2
+  retention_hours: 24
+  batch_size: 100
+  max_retries: 5
+  backoff_base_sec: 0.5
+  backoff_max_sec: 5.0
+
+dynamodb:
+  table_name: ecommerce-transactions
+  billing_mode: PAY_PER_REQUEST
+  ttl_attribute: expires_at
+  ttl_days: 90
+
+s3:
+  bucket_name: ecommerce-streaming-analytics-archive
+  raw_prefix: raw-events
+  processed_prefix: processed-events
+  rejected_prefix: rejected-events
+  buffer_size_mb: 5
+  buffer_interval_seconds: 60
+
+validation:
+  allowed_currencies:
+    - INR
+    - USD
+    - EUR
+    - GBP
+  allowed_payment_methods:
+    - UPI
+    - CARD
+    - NET_BANKING
+    - WALLET
+    - COD
+  supported_event_versions:
+    - 1
+  flagged_threshold_amount: 10000.00
+
+cloudwatch:
+  metric_namespace: EcommerceStreamingAnalytics
+  log_level: INFO
