@@ -1,0 +1,81 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "EcommerceStreamingAnalytics", "EventsReceived", "Environment", "development", { "stat": "Sum", "label": "Incoming Events" } ],
+          [ ".", "EventsProcessed", ".", ".", { "stat": "Sum", "label": "Processed Events" } ],
+          [ ".", "DuplicateEvents", ".", ".", { "stat": "Sum", "label": "Duplicate Events" } ],
+          [ ".", "InvalidEvents", ".", ".", { "stat": "Sum", "label": "Rejected / Invalid Events" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Pipeline Event Ingestion & Processing Volume",
+        "period": 60
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "EcommerceStreamingAnalytics", "ProcessingLatencyMs", "Environment", "development", { "stat": "Average", "label": "Avg Latency (ms)" } ],
+          [ "...", { "stat": "p95", "label": "p95 Latency (ms)" } ],
+          [ "...", { "stat": "p99", "label": "p99 Latency (ms)" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "End-to-End Processing Latency",
+        "period": 60
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "EcommerceStreamingAnalytics", "PaymentSuccess", "Environment", "development", { "stat": "Sum", "label": "Payment Succeeded" } ],
+          [ ".", "PaymentFailed", ".", ".", { "stat": "Sum", "label": "Payment Failed" } ],
+          [ ".", "FlaggedTransactions", ".", ".", { "stat": "Sum", "label": "High-Value Flagged" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Business Payment Outcomes",
+        "period": 60
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "IteratorAge", "FunctionName", "ecommerce-stream-processor", { "stat": "Maximum", "label": "Kinesis Consumer Lag (ms)" } ],
+          [ ".", "Errors", ".", ".", { "stat": "Sum", "label": "Lambda Invocations Errors" } ],
+          [ ".", "Throttles", ".", ".", { "stat": "Sum", "label": "Lambda Throttles" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Consumer Lag & Lambda Health",
+        "period": 60
+      }
+    }
+  ]
+}
