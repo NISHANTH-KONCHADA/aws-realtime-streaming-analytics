@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Real-Time E-Commerce Streaming Analytics Pipeline.
+  Provisions Kinesis Data Streams, DynamoDB, S3 Partitioned Archive,
+  Lambda Stream Processor with partial batch failure reporting, and CloudWatch Alarms.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues: [development, staging, production]
+    Description: Deployment target environment.
+  StreamShardCount:
+    Type: Number
+    Default: 2
+    Description: Number of provisioned shards for the Kinesis Data Stream.
+  HighValueThreshold:
+    Type: String
+    Default: "10000.00"
+    Description: Monetary threshold for transaction review flagging.
+
+Resources:
+  # ============================================================================
+  # 1. Amazon Kinesis Data Stream
+  # ============================================================================
+  EcommerceTransactionStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub "ecommerce-transaction-stream-${Environment}"
+      ShardCount: !Ref StreamShardCount
+      RetentionPeriodHours: 24
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/aws/kinesis
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: EcommerceStreamingAnalytics
+
+  # ============================================================================
+  # 2. Amazon DynamoDB Operational State Table
+  # ============================================================================
+  EcommerceTransactionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "ecommerce-transactions-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+        - AttributeName: customer_id
+          AttributeType: S
+        - AttributeName: event_timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: CustomerIndex
+          KeySchema:
+            - AttributeName: customer_id
+              KeyType: HASH
+            - AttributeName: event_timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================================
+  # 3. Amazon S3 Historical Event Lake
+  # ============================================================================
+  EcommerceArchiveBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ecommerce-streaming-analytics-${Environment}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToStandardIAAfter30Days
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+
+  # ============================================================================
+  # 4. AWS Lambda Stream Processor Function
+  # ============================================================================
+  StreamProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ecommerce-stream-processor-${Environment}"
+      CodeUri: ../
+      Handler: lambda_src.stream_processor.lambda_handler
+      Runtime: python3.11
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          DYNAMODB_TABLE_NAME: !Ref EcommerceTransactionTable
+          S3_ARCHIVE_BUCKET: !Ref EcommerceArchiveBucket
+          CLOUDWATCH_METRIC_NAMESPACE: EcommerceStreamingAnalytics
+          FLAGGED_AMOUNT_THRESHOLD: !Ref HighValueThreshold
+          LOG_LEVEL: INFO
+      Policies:
+        # Kinesis Stream Reader
+        - KinesisStreamReadPolicy:
+            StreamName: !Ref EcommerceTransactionStream
+        # DynamoDB CRUD
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EcommerceTransactionTable
+        # S3 Write Policy
+        - S3CrudPolicy:
+            BucketName: !Ref EcommerceArchiveBucket
+        # CloudWatch Custom Metrics
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: "*"
+
+  # ============================================================================
+  # 5. Kinesis to Lambda Event Source Mapping (With Partial Batch Failure)
+  # ============================================================================
+  StreamEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt EcommerceTransactionStream.Arn
+      FunctionName: !GetAtt StreamProcessorFunction.Arn
+      StartingPosition: LATEST
+      BatchSize: 100
+      MaximumBatchingWindowInSeconds: 5
+      # Enable partial batch failure reporting to avoid retrying already processed records
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+      BisectBatchOnFunctionError: true
+      MaximumRetryAttempts: 3
+
+  # ============================================================================
+  # 6. CloudWatch Operational Alarms
+  # ============================================================================
+  ConsumerLagAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "ecommerce-kinesis-consumer-lag-${Environment}"
+      AlarmDescription: "Alerts when Lambda Kinesis IteratorAge exceeds 60 seconds."
+      Namespace: AWS/Lambda
+      MetricName: IteratorAge
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StreamProcessorFunction
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 60000  # 60,000 milliseconds = 1 minute
+      ComparisonOperator: GreaterThanThreshold
+
+  ProcessorErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "ecommerce-stream-processor-errors-${Environment}"
+      AlarmDescription: "Alerts when Lambda execution error rate spikes."
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StreamProcessorFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+Outputs:
+  KinesisStreamArn:
+    Description: ARN of the Kinesis Data Stream
+    Value: !GetAtt EcommerceTransactionStream.Arn
+  DynamoDBTableName:
+    Description: Name of the DynamoDB Transaction Table
+    Value: !Ref EcommerceTransactionTable
+  S3ArchiveBucketName:
+    Description: Name of the S3 Archival Bucket
+    Value: !Ref EcommerceArchiveBucket

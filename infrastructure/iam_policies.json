@@ -1,0 +1,68 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KinesisProducerPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "kinesis:PutRecord",
+        "kinesis:PutRecords",
+        "kinesis:DescribeStream",
+        "kinesis:DescribeStreamSummary"
+      ],
+      "Resource": "arn:aws:kinesis:*:*:stream/ecommerce-transaction-stream-*"
+    },
+    {
+      "Sid": "LambdaKinesisConsumerPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "kinesis:GetRecords",
+        "kinesis:GetShardIterator",
+        "kinesis:DescribeStream",
+        "kinesis:DescribeStreamSummary",
+        "kinesis:ListShards"
+      ],
+      "Resource": "arn:aws:kinesis:*:*:stream/ecommerce-transaction-stream-*"
+    },
+    {
+      "Sid": "DynamoDBOperationalPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:*:*:table/ecommerce-transactions-*",
+        "arn:aws:dynamodb:*:*:table/ecommerce-transactions-*/index/*"
+      ]
+    },
+    {
+      "Sid": "S3ArchivePermissions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::ecommerce-streaming-analytics-*",
+        "arn:aws:s3:::ecommerce-streaming-analytics-*/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchOperationalMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "EcommerceStreamingAnalytics"
+        }
+      }
+    }
+  ]
+}
